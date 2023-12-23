@@ -11,6 +11,7 @@
 ## 原版迁移步骤
 
 按以下步骤进行面板文件迁移：
+
     cd /www/wwwroot/站点
     git remote set-url origin https://github.com/wyx2685/v2board  
     git checkout master  
