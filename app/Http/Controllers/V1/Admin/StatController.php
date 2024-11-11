@@ -15,13 +15,8 @@ use App\Models\StatServer;
 use App\Models\StatUser;
 use App\Models\Ticket;
 use App\Models\User;
-use App\Services\StatisticalService;
-use App\Services\UserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-
-use function PHPSTORM_META\map;
 
 class StatController extends Controller
 {
@@ -29,6 +24,8 @@ class StatController extends Controller
     {
         return [
             'data' => [
+                'online_user' => User::where('t','>=', time() - 600)
+                    ->count(),
                 'month_income' => Order::where('created_at', '>=', strtotime(date('Y-m-1')))
                     ->where('created_at', '<', time())
                     ->whereNotIn('status', [0, 2])
@@ -201,7 +198,7 @@ class StatController extends Controller
         foreach ($statistics as $k => $v) {
             $id = $statistics[$k]['user_id'];
             $user = User::where('id', $id)->first();
-            $statistics[$k]['email'] = $user['email'];
+            $statistics[$k]['email'] = empty($user) ? "null" : $user['email'];
             $statistics[$k]['total'] = $statistics[$k]['total'] * $statistics[$k]['server_rate'] / 1073741824;
             if (isset($idIndexMap[$id])) {
                 $index = $idIndexMap[$id];
@@ -241,9 +238,10 @@ class StatController extends Controller
         foreach ($statistics as $k => $v) {
             $id = $statistics[$k]['user_id'];
             $user = User::where('id', $id)->first();
-            $statistics[$k]['email'] = $user['email'];
+            $statistics[$k]['email'] = empty($user) ? "null" : $user['email'];
             $statistics[$k]['total'] = $statistics[$k]['total'] * $statistics[$k]['server_rate'] / 1073741824;
             if (isset($idIndexMap[$id])) {
+                
                 $index = $idIndexMap[$id];
                 $data[$index]['total'] += $statistics[$k]['total'];
             } else {

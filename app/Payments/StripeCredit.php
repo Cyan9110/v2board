@@ -99,7 +99,7 @@ class StripeCredit {
                 $object = $event->data->object;
                 if ($object->status === 'succeeded') {
                     if (!isset($object->metadata->out_trade_no) && !isset($object->source->metadata)) {
-                        die('order error');
+                        return('order error');
                     }
                     $metaData = isset($object->metadata->out_trade_no) ? $object->metadata : $object->source->metadata;
                     $tradeNo = $metaData->out_trade_no;
@@ -112,12 +112,12 @@ class StripeCredit {
             default:
                 abort(500, 'event is not support');
         }
-        die('success');
+        return('success');
     }
 
     private function exchange($from, $to)
     {
-        $result = file_get_contents('https://api.exchangerate.host/latest?symbols=' . $to . '&base=' . $from);
+        $result = file_get_contents("https://api.exchangerate-api.com/v4/latest/{$from}");
         $result = json_decode($result, true);
         return $result['rates'][$to];
     }
