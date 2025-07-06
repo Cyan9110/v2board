@@ -4,6 +4,7 @@
 /public/storage
 /public/env.example.js
 /public/favicon.ico
+/public/assets/admin/custom.css
 /storage/*.key
 /vendor
 .env
@@ -21,3 +22,5 @@ yarn.lock
 docker-compose.yml
 .DS_Store
 public/clients/*
+workerman.webman.php.pid
+workerman.log

@@ -108,7 +108,7 @@ class UserController extends Controller
                 abort(500, __('The gift card is not yet valid'));
             }
 
-            if ($giftcard->end_at && $currentTime > $giftcard->end_at) {
+            if ($giftcard->ended_at && $currentTime > $giftcard->ended_at) {
                 abort(500, __('The gift card has expired'));
             }
 
@@ -161,7 +161,11 @@ class UserController extends Controller
                         $user->device_limit = $plan->device_limit;
                         $user->u = 0;
                         $user->d = 0;
-                        $user->expired_at = $currentTime + $giftcard->value * 86400;
+                        if($giftcard->value == 0) {
+                            $user->expired_at = null;
+                        } else {
+                            $user->expired_at = $currentTime + $giftcard->value * 86400;
+                        }
                     } else {
                         abort(500, __('Not suitable gift card type'));
                     }
@@ -279,6 +283,20 @@ class UserController extends Controller
         $user['reset_day'] = $userService->getResetDay($user);
         return response([
             'data' => $user
+        ]);
+    }
+
+    public function unbindTelegram(Request $request)
+    {
+        $user = User::find($request->user['id']);
+        if (!$user) {
+            abort(500, __('The user does not exist'));
+        }
+        if (!$user->update(['telegram_id' => null])) {
+            abort(500, __('Unbind telegram failed'));
+        }
+        return response([
+            'data' => true
         ]);
     }
 
