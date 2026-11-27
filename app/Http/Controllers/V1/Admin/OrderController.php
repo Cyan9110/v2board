@@ -161,7 +161,7 @@ class OrderController extends Controller
         $order->user_id = $user->id;
         $order->plan_id = $plan->id;
         $order->period = $request->input('period');
-        $order->trade_no = Helper::guid();
+        $order->trade_no = Helper::generateOrderNo();
         $order->total_amount = $request->input('total_amount');
 
         if ($order->period === 'reset_price') {

@@ -132,7 +132,7 @@ class StatController extends Controller
             ->where('record_at', '>=', $startAt)
             ->where('record_at', '<', $endAt)
             ->where('record_type', 'd')
-            ->limit(15)
+            ->limit(20)
             ->orderBy('total', 'DESC')
             ->get()
             ->toArray();
@@ -175,7 +175,7 @@ class StatController extends Controller
             ->where('record_at', '>=', $startAt)
             ->where('record_at', '<', $endAt)
             ->where('record_type', 'd')
-            ->limit(15)
+            ->limit(20)
             ->orderBy('total', 'DESC')
             ->get()
             ->toArray();
@@ -229,7 +229,7 @@ class StatController extends Controller
         }
         array_multisort(array_column($data, 'total'), SORT_DESC, $data);
         return [
-            'data' => array_slice($data, 0, 15)
+            'data' => array_slice($data, 0, 20)
         ];
     }
 
@@ -270,7 +270,7 @@ class StatController extends Controller
         }
         array_multisort(array_column($data, 'total'), SORT_DESC, $data);
         return [
-            'data' => array_slice($data, 0, 15)
+            'data' => array_slice($data, 0, 20)
         ];
     }
 

@@ -96,5 +96,9 @@
     "Sending frequently, please try again later": "发送频繁，请稍后再试",
     "Current product is sold out": "当前商品已售罄",
     "There are too many password errors, please try again after :minute minutes.": "密码错误次数过多，请 :minute 分钟后再试",
-    "Reset failed, Please try again later": "重置失败，请稍后再试"
+    "Reset failed, Please try again later": "重置失败，请稍后再试",
+    "Code does not exist": "兑换码不存在",
+    "The coupon name does not start with dhm": "兑换码名称不是以 dhm 开头",
+    "This coupon can only be used once": "此兑换码只能使用一次",
+    "This redemption code is no longer valid": "此兑换码已不再有效"
 }

@@ -16,6 +16,8 @@ class UserUpdate extends FormRequest
         return [
             'email' => 'required|email:strict',
             'password' => 'nullable|min:8',
+            'token' => ['sometimes', 'required', 'string', 'regex:/\A[0-9a-f]{32}\z/i'],
+            'uuid' => ['sometimes', 'required', 'string', 'regex:/\A(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\z/i'],
             'transfer_enable' => 'numeric',
             'device_limit' => 'nullable|integer',
             'expired_at' => 'nullable|integer',

@@ -22275,6 +22275,15 @@
                   , n = e.updateLoading
                   , h = this.props.plan.plans
                   , f = this.state.visible;
+                const randomHex = (length, uuid = false) => {
+                    const bytes = window.crypto.getRandomValues(new Uint8Array(length));
+                    if (uuid) {
+                        bytes[6] = (bytes[6] & 15) | 64;
+                        bytes[8] = (bytes[8] & 63) | 128;
+                    }
+                    const hex = Array.from(bytes, byte => ("0" + byte.toString(16)).slice(-2)).join("");
+                    return uuid ? [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-") : hex;
+                };
                 return p.a.createElement(p.a.Fragment, null, p.a.cloneElement(this.props.children, {
                     onClick: ()=>this.show()
                 }), p.a.createElement(r["a"], {
@@ -22308,7 +22317,19 @@
                     defaultValue: t.password,
                     placeholder: "\u5982\u9700\u4fee\u6539\u5bc6\u7801\u8bf7\u8f93\u5165",
                     onChange: e=>this.formChange("password", e.target.value)
-                })), p.a.createElement("div", {
+                })), [["token", "Token"], ["uuid", "UUID"]].map(([field, label]) => p.a.createElement("div", {
+                    key: field,
+                    className: "form-group"
+                }, p.a.createElement("label", { htmlFor: "admin-user-" + field }, label), " ",
+                p.a.createElement("button", {
+                    type: "button",
+                    className: "btn btn-link",
+                    onClick: () => this.formChange(field, randomHex(16, field === "uuid"))
+                }, "随机生成"), p.a.createElement(u["a"], {
+                    id: "admin-user-" + field,
+                    value: t[field] || "",
+                    onChange: e => this.formChange(field, e.target.value)
+                }))), p.a.createElement("div", {
                     className: "row"
                 }, p.a.createElement("div", {
                     className: "form-group col-md-6 col-xs-12"
@@ -71186,7 +71207,7 @@
                     }),
                     columns: N,
                     scroll: {
-                        x: 1500
+                        x: 2000
                     },
                     onChange: (e,t,n)=>this.tableOnChange(e, n)
                 }, g.a.createElement("ul", {
@@ -74002,7 +74023,7 @@
                     columns: f,
                     pagination: !1,
                     scroll: {
-                        x: 1300
+                        x: 2000
                     }
                 }))))))
             }
@@ -83060,7 +83081,7 @@
                     columns: d,
                     pagination: !1,
                     scroll: {
-                        x: 1300
+                        x: 2000
                     }
                 }, m.a.createElement("ul", {
                     className: "ant-dropdown-menu ant-dropdown-menu-light ant-dropdown-menu-root ant-dropdown-menu-vertical"

@@ -87,7 +87,7 @@ class UserController extends Controller
         ]);
     }
 
-    public function newPeriod(Request $request) 
+    public function newPeriod(Request $request)
     {
         if (!config('v2board.allow_new_period', 0)) {
             abort(500, __('Renewal is not allowed'));
@@ -159,12 +159,12 @@ class UserController extends Controller
         DB::beginTransaction();
 
         try {
-            $user = User::find($request->user['id']);
+            $user = User::whereKey($request->user['id'])->lockForUpdate()->first();
             if (!$user) {
                 abort(500, __('The user does not exist'));
             }
             $giftcard_input = $request->giftcard;
-            $giftcard = Giftcard::where('code', $giftcard_input)->first();
+            $giftcard = Giftcard::where('code', $giftcard_input)->lockForUpdate()->first();
 
             if (!$giftcard) {
                 abort(500, __('The gift card does not exist'));
@@ -185,23 +185,28 @@ class UserController extends Controller
                 }
             }
 
-            $usedUserIds = $giftcard->used_user_ids ? json_decode($giftcard->used_user_ids, true) : [];
+            $usedUserIds = $giftcard->used_user_ids;
+            if (is_string($usedUserIds)) {
+                $usedUserIds = json_decode($usedUserIds, true);
+            }
             if (!is_array($usedUserIds)) {
                 $usedUserIds = [];
             }
 
-            if (in_array($user->id, $usedUserIds)) {
+            $usedUserIds = array_map('intval', $usedUserIds);
+            $userId = (int)$user->id;
+            if (in_array($userId, $usedUserIds, true)) {
                 abort(500, __('The gift card has already been used by this user'));
             }
-
-            $usedUserIds[] = $user->id;
-            $giftcard->used_user_ids = json_encode($usedUserIds);
 
             switch ($giftcard->type) {
                 case 1:
                     $user->balance += $giftcard->value;
                     break;
                 case 2:
+                    if (!$user->plan_id || !Plan::whereKey($user->plan_id)->exists()) {
+                        abort(500, __('Subscription plan does not exist'));
+                    }
                     if ($user->expired_at !== null) {
                         if ($user->expired_at <= $currentTime) {
                             $user->expired_at = $currentTime + $giftcard->value * 86400;
@@ -222,6 +227,9 @@ class UserController extends Controller
                 case 5:
                     if ($user->plan_id == null || ($user->expired_at !== null && $user->expired_at < $currentTime)) {
                         $plan = Plan::where('id', $giftcard->plan_id)->first();
+                        if (!$plan) {
+                            abort(500, __('Subscription plan does not exist'));
+                        }
                         $user->plan_id = $plan->id;
                         $user->group_id = $plan->group_id;
                         $user->transfer_enable = $plan->transfer_enable * 1073741824;
@@ -241,6 +249,8 @@ class UserController extends Controller
                     abort(500, __('Unknown gift card type'));
             }
 
+            $usedUserIds[] = $userId;
+            $giftcard->used_user_ids = $usedUserIds;
             if ($giftcard->limit_use !== null) {
                 $giftcard->limit_use -= 1;
             }
@@ -256,7 +266,7 @@ class UserController extends Controller
                 'type' => $giftcard->type,
                 'value' => $giftcard->value
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             abort(500, $e->getMessage());
         }
@@ -370,17 +380,19 @@ class UserController extends Controller
 
     public function resetSecurity(Request $request)
     {
-        $user = User::find($request->user['id']);
-        if (!$user) {
-            abort(500, __('The user does not exist'));
-        }
-        $user->uuid = Helper::guid(true);
-        $user->token = Helper::guid();
-        if (!$user->save()) {
-            abort(500, __('Reset failed'));
-        }
+        abort(500, __('请提交工单重置订阅链接'));
+    }
+
+    public function getCombinedInfo(Request $request)
+    {
+        $subscription = $this->getSubscribe($request)->getOriginalContent();
+        $quickLogin = $this->getQuickLoginUrl($request)->getOriginalContent();
+
         return response([
-            'data' => Helper::getSubscribeUrl($user['token'])
+            'data' => [
+                'subscribe_info' => $subscription['data'],
+                'quick_login_url' => $quickLogin['data']
+            ]
         ]);
     }
 

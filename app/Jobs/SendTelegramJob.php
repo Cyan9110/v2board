@@ -8,6 +8,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SendTelegramJob implements ShouldQueue
 {
@@ -39,5 +41,13 @@ class SendTelegramJob implements ShouldQueue
     {
         $telegramService = new TelegramService();
         $telegramService->sendMessage($this->telegramId, $this->text, 'markdown');
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('SendTelegramJob failed', [
+            'exception_type' => get_class($exception),
+            'reason' => $exception->getMessage(),
+        ]);
     }
 }

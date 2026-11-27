@@ -18,8 +18,8 @@ class Client
      */
     public function handle($request, Closure $next)
     {
-        $token = $request->input('token');
-        if (empty($token)) {
+        $token = $request->query('vc');
+        if (!is_string($token) || $token === '') {
             abort(403, 'token is null');
         }
         $submethod = (int)config('v2board.show_subscribe_method', 0);

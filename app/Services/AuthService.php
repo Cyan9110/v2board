@@ -25,6 +25,7 @@ class AuthService
         $authData = JWT::encode([
             'id' => $this->user->id,
             'session' => $guid,
+            'exp' => time() + 60 * 24 * 60 * 60,
         ], config('app.key'), 'HS256');
         self::addSession($this->user->id, $guid, [
             'ip' => $request->ip(),
@@ -56,7 +57,12 @@ class AuthService
                 ])
                     ->find($data['id']);
                 if (!$user) return false;
-                Cache::put($jwt, $user->toArray(), 3600);
+                $cacheTtl = 3600;
+                if (isset($data['exp'])) {
+                    $cacheTtl = min($cacheTtl, $data['exp'] - time());
+                    if ($cacheTtl <= 0) return false;
+                }
+                Cache::put($jwt, $user->toArray(), $cacheTtl);
             }
             return Cache::get($jwt);
         } catch (\Exception $e) {

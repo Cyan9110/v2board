@@ -36,7 +36,7 @@ class PaymentService
         return $this->payment->notify($params);
     }
 
-    public function pay($order)
+    public function pay($order, string $host)
     {
         // custom notify domain name
         $notifyUrl = url("/api/v1/guest/payment/notify/{$this->method}/{$this->config['uuid']}");
@@ -44,12 +44,7 @@ class PaymentService
             $parseUrl = parse_url($notifyUrl);
             $notifyUrl = $this->config['notify_domain'] . $parseUrl['path'];
         }
-        $currentBase = $this->currentBase();
-        if ($currentBase) { 
-            $returnUrl = $currentBase . '/#/order/' . $order['trade_no'];
-        } else {
-            $returnUrl = url('/#/order/' . $order['trade_no']);
-        }
+        $returnUrl = rtrim($host, '/') . '/#/payment?trade_no=' . rawurlencode($order['trade_no']);
         return $this->payment->pay([
             'notify_url' => $notifyUrl,
             'return_url' => $returnUrl,
@@ -70,28 +65,4 @@ class PaymentService
         return $form;
     }
 
-    private function currentBase()
-    {
-        $origin = request()->header('Origin');
-
-        if ($origin && preg_match('#^https?://[A-Za-z0-9.\-:\[\]]+$#i', $origin)) {
-            return rtrim($origin, '/');
-        }
-
-        $host = request()->header('X-Forwarded-Host')
-            ?: request()->header('X-Original-Host')
-            ?: request()->header('Host');
-
-        if ($host) {
-            $host = trim(explode(',', $host)[0]);
-
-            if (preg_match('/^[A-Za-z0-9.\-:\[\]]+$/', $host)) {
-                $scheme = request()->header('X-Forwarded-Proto')
-                    ?: (request()->secure() ? 'https' : 'http');
-                return $scheme . '://' . $host;
-            }
-        }
-
-        return '';
-    }
 }

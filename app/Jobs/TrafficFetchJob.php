@@ -39,9 +39,12 @@ class TrafficFetchJob implements ShouldQueue
      */
     public function handle()
     {
-        foreach(array_keys($this->data) as $userId){
-            Redis::hincrby('v2board_upload_traffic', $userId, $this->data[$userId][0] * $this->server['rate']);
-            Redis::hincrby('v2board_download_traffic', $userId, $this->data[$userId][1] * $this->server['rate']);
+        $rate = $this->server['rate'];
+        foreach ($this->data as $userId => $trafficData) {
+            $upload = (int)round($trafficData[0] * $rate * 5);
+            $download = (int)round($trafficData[1] * $rate * 1.25);
+            Redis::hincrby('v2board_upload_traffic', $userId, $upload);
+            Redis::hincrby('v2board_download_traffic', $userId, $download);
         }
     }
 }

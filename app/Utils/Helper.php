@@ -108,7 +108,7 @@ class Helper
         $subscribeUrl = $subscribeUrls[rand(0, count($subscribeUrls) - 1)];
         switch ($submethod) {
             case 0:
-                $path = "{$path}?token={$token}";
+                $path = "{$path}?vc={$token}";
                 if ($subscribeUrl) return $subscribeUrl . $path;
                 return url($path);
                 break;
@@ -123,7 +123,7 @@ class Helper
                         $newtoken = Cache::get("otp_{$token}");
                     }
                 }
-                $path = "{$path}?token={$newtoken}";
+                $path = "{$path}?vc={$newtoken}";
                 if ($subscribeUrl) return $subscribeUrl . $path;
                 return url($path);
                 break;
@@ -135,7 +135,7 @@ class Helper
                 $user = User::where('token', $token)->select('id')->first();
                 $newtoken = self::base64EncodeUrlSafe("{$user->id}:{$hash}");
 
-                $path = "{$path}?token={$newtoken}";
+                $path = "{$path}?vc={$newtoken}";
                 if ($subscribeUrl) return $subscribeUrl . $path;
                 return url($path);
                 break;

@@ -21,12 +21,12 @@ class Shadowrocket
         $user = $this->user;
 
         $uri = '';
-        //display remaining traffic and expire date
-        $upload = round($user['u'] / (1024*1024*1024), 2);
-        $download = round($user['d'] / (1024*1024*1024), 2);
-        $totalTraffic = round($user['transfer_enable'] / (1024*1024*1024), 2);
-        $expiredDate = $user['expired_at'] === NULL ? '长期有效' : date('Y-m-d', $user['expired_at']);
-        $uri .= "STATUS=🚀↑:{$upload}GB,↓:{$download}GB,TOT:{$totalTraffic}GB💡Expires:{$expiredDate}\r\n";
+        $bytesPerGb = 1024 * 1024 * 1024;
+        $totalTraffic = round($user['transfer_enable'] / $bytesPerGb, 2);
+        $remainingBytes = max(0, $user['transfer_enable'] - $user['u'] - $user['d']);
+        $remainingTraffic = round($remainingBytes / $bytesPerGb, 2);
+        $expiredDate = $user['expired_at'] === NULL ? '长期有效' : date('Y/m/d', $user['expired_at']);
+        $uri .= "STATUS=🚀总流量:{$totalTraffic}GB 剩余{$remainingTraffic}GB💡到期日:{$expiredDate}\r\n";
 
         foreach ($this->servers as $server) {
             if ($server['type'] === 'vmess' || ($server['type'] === 'v2node' && $server['protocol'] === 'vmess')) {

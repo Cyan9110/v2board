@@ -132,6 +132,12 @@ class UserController extends Controller
         if (User::where('email', $params['email'])->first() && $user->email !== $params['email']) {
             abort(500, '邮箱已被使用');
         }
+        foreach (['token' => 'Token', 'uuid' => 'UUID'] as $field => $label) {
+            if (isset($params[$field]) && $params[$field] !== $user->{$field}
+                && User::where($field, $params[$field])->where('id', '<>', $user->id)->exists()) {
+                abort(422, $label . ' 已被使用');
+            }
+        }
         if (isset($params['password'])) {
             $params['password'] = password_hash($params['password'], PASSWORD_DEFAULT);
             $params['password_algo'] = NULL;

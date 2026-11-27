@@ -61,18 +61,20 @@ class StatUserJob implements ShouldQueue
             try {
                 DB::beginTransaction();
                 foreach($this->data as $userId => $trafficData){
+                    $upload = (int)round($trafficData[0] * 5);
+                    $download = (int)round($trafficData[1] * 1.25);
                     if (isset($existingData[$userId])) {
                         $userdata = StatUser::where('id', $existingData[$userId]['id'])->first();
                         $userdata->update([
-                            'u' => $userdata['u'] + $trafficData[0],
-                            'd' => $userdata['d'] + $trafficData[1]
+                            'u' => $userdata['u'] + $upload,
+                            'd' => $userdata['d'] + $download
                         ]);
                     } else {
                         $insertData[] = [
                             'user_id' => $userId,
                             'server_rate' => $this->server['rate'],
-                            'u' => $trafficData[0],
-                            'd' => $trafficData[1],
+                            'u' => $upload,
+                            'd' => $download,
                             'record_type' => $this->recordType,
                             'record_at' => $recordAt
                         ];

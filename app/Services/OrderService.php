@@ -130,7 +130,10 @@ class OrderService
         if ($user->discount) {
             $order->discount_amount = $order->discount_amount + ($order->total_amount * ($user->discount / 100));
         }
-        $order->total_amount = $order->total_amount - $order->discount_amount;
+        if ($order->discount_amount > $order->total_amount) {
+            $order->discount_amount = $order->total_amount;
+        }
+        $order->total_amount = max(0, $order->total_amount - $order->discount_amount);
     }
 
     public function setInvite(User $user):void
@@ -350,23 +353,19 @@ class OrderService
 
     private function getTime($str, $timestamp)
     {
-        if ($timestamp < time()) {
-            $timestamp = time();
+        $months = self::STR_TO_TIME[$str] ?? null;
+        if ($months === null) {
+            return null;
         }
-        switch ($str) {
-            case 'month_price':
-                return strtotime('+1 month', $timestamp);
-            case 'quarter_price':
-                return strtotime('+3 month', $timestamp);
-            case 'half_year_price':
-                return strtotime('+6 month', $timestamp);
-            case 'year_price':
-                return strtotime('+12 month', $timestamp);
-            case 'two_year_price':
-                return strtotime('+24 month', $timestamp);
-            case 'three_year_price':
-                return strtotime('+36 month', $timestamp);
-        }
+
+        $date = (new \DateTimeImmutable())->setTimestamp(max((int)$timestamp, time()));
+        $targetMonth = $date->modify('first day of this month')->modify("+{$months} months");
+
+        return $targetMonth->setDate(
+            (int)$targetMonth->format('Y'),
+            (int)$targetMonth->format('m'),
+            min((int)$date->format('j'), (int)$targetMonth->format('t'))
+        )->getTimestamp();
     }
 
     private function openEvent($eventId)

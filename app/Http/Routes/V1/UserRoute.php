@@ -62,6 +62,9 @@ class UserRoute
             $router->get ('/knowledge/getCategory', 'V1\\User\\KnowledgeController@getCategory');
             // Stat
             $router->get ('/stat/getTrafficLog', 'V1\\User\\StatController@getTrafficLog');
+            // Api
+            $router->post('/redemptioncode/check', 'V1\\User\\RedemptionCodeController@check');
+            $router->get ('/getCombinedInfo', 'V1\\User\\UserController@getCombinedInfo');
         });
     }
 }
