@@ -368,7 +368,12 @@ class UserController extends Controller
         }
         $user['alive_ip'] = $countalive;
 
-        $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        $now = time();
+        if ($user->plan_id && $user->expired_at && $user->expired_at > $now) {
+            $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        } else {
+            $user['subscribe_url'] = null;
+        }
         $user['subscribe_access'] = $access ?? (new SubscribeAccessService())->status($user);
 
         $userService = new UserService();
