@@ -33,7 +33,7 @@ class KnowledgeController extends Controller
                 str_replace(
                     array('+', '/', '='),
                     array('-', '_', ''),
-                    base64_encode($subscribeUrl)
+                    base64_encode($subscribeUrl."&flag=shadowrocket")
                 ),
                 $knowledge['body']
             );
