@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Utils;
+use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 
 class Helper
 {
@@ -97,15 +99,47 @@ class Helper
 
     public static function getSubscribeUrl($token)
     {
+        $submethod = (int)config('v2board.show_subscribe_method', 0);
         $path = config('v2board.subscribe_path', '/api/v1/client/subscribe');
         if (empty($path)) {
             $path = '/api/v1/client/subscribe';
         } 
-        $path = "{$path}?token={$token}";
         $subscribeUrls = explode(',', config('v2board.subscribe_url'));
         $subscribeUrl = $subscribeUrls[rand(0, count($subscribeUrls) - 1)];
-        if ($subscribeUrl) return $subscribeUrl . $path;
-        return url($path);
+        switch ($submethod) {
+            case 0:
+                $path = "{$path}?token={$token}";
+                if ($subscribeUrl) return $subscribeUrl . $path;
+                return url($path);
+                break;
+            case 1:
+                $newtoken = Cache::get("otp_{$token}");
+                if (!$newtoken) {
+                    $newtoken = self::base64EncodeUrlSafe(random_bytes(24));
+                    $added = Cache::add("otp_{$token}", $newtoken, 86400);
+                    if ($added) {
+                        Cache::put("otpn_{$newtoken}", $token, 86400);
+                    } else {
+                        $newtoken = Cache::get("otp_{$token}");
+                    }
+                }
+                $path = "{$path}?token={$newtoken}";
+                if ($subscribeUrl) return $subscribeUrl . $path;
+                return url($path);
+                break;
+            case 2:
+                $timestep = (int)config('v2board.show_subscribe_expire', 5) * 60;
+                $counter = floor(time() / $timestep);
+                $counterBytes = pack('N*', 0) . pack('N*', $counter);
+                $hash = hash_hmac('sha1', $counterBytes, $token, false);
+                $user = User::where('token', $token)->select('id')->first();
+                $newtoken = self::base64EncodeUrlSafe("{$user->id}:{$hash}");
+
+                $path = "{$path}?token={$newtoken}";
+                if ($subscribeUrl) return $subscribeUrl . $path;
+                return url($path);
+                break;
+        }
     }
 
     public static function randomPort($range) {
@@ -119,6 +153,16 @@ class Helper
         return str_replace(['+', '/', '='], ['-', '_', ''], $encoded);
     }
 
+    public static function base64DecodeUrlSafe($data)
+    {
+        $b64 = str_replace(['-', '_'], ['+', '/'], $data);
+        $pad = 4 - (strlen($b64) % 4);
+        if ($pad < 4) {
+            $b64 .= str_repeat('=', $pad);
+        }
+        return base64_decode($b64);
+    }
+
     public static function encodeURIComponent($str) {
         $revert = array('%21'=>'!', '%2A'=>'*', '%27'=>"'", '%28'=>'(', '%29'=>')');
         return strtr(rawurlencode($str), $revert);
@@ -126,14 +170,40 @@ class Helper
 
     public static function buildUri($uuid, $server)
     {
-        $type = $server['type'];
-        $method = "build" . ucfirst($type) . "Uri";
+        if ($server['type'] == 'v2node') {
+            $server['type'] = $server['protocol'];
+        } 
+        $method = "build" . ucfirst($server['type']) . "Uri";
 
         if (method_exists(self::class, $method)) {
             return self::$method($uuid, $server);
         }
 
         return '';
+    }
+
+    public static function getTlsCertificateFingerprint(array $server): ?string
+    {
+        if ((int) ($server['tls'] ?? 1) !== 1) {
+            return null;
+        }
+
+        $tlsSettings = $server['tls_settings'] ?? $server['tlsSettings'] ?? [];
+        $pin = $tlsSettings['pinned_peer_cert_sha256'] ?? null;
+        if (!is_string($pin)) {
+            return null;
+        }
+
+        $fingerprint = strtolower(str_replace(':', '', trim($pin)));
+        return preg_match('/\\A[0-9a-f]{64}\\z/', $fingerprint) ? $fingerprint : null;
+    }
+
+    public static function appendTlsCertificateFingerprint(array &$config, array $server, string $option): void
+    {
+        $fingerprint = self::getTlsCertificateFingerprint($server);
+        if ($fingerprint !== null) {
+            $config[] = "{$option}={$fingerprint}";
+        }
     }
 
     public static function buildUriString($scheme, $auth, $server, $name, $params = [])
@@ -167,6 +237,9 @@ class Helper
         $uri = "ss://{$str}@{$add}:{$server['port']}";
         if ($server['obfs'] == 'http') {
             $uri .= "?plugin=obfs-local;obfs=http;obfs-host={$server['obfs-host']};path={$server['obfs-path']}";
+        } else if ((($server['network'] ?? null) == 'http') && isset($server['network_settings']['Host'])) {
+            $path = $server['network_settings']['path'] ?? '/';
+            $uri .= "?plugin=obfs-local;obfs=tls;obfs-host={$server['network_settings']['Host']};path={$path}";
         }
         return $uri."#{$name}\r\n";
     }
@@ -191,11 +264,16 @@ class Helper
 
         if ($server['tls']) {
             $tlsSettings = $server['tls_settings'] ?? $server['tlsSettings'] ?? [];
+            $config['allowInsecure'] = (int)($tlsSettings['allow_insecure'] ?? $tlsSettings['allowInsecure'] ?? 0);
+            $config['insecure'] = (string)$config['allowInsecure'];
             $config['sni'] = $tlsSettings['server_name'] ?? $tlsSettings['serverName'] ?? '';
+            if ($server['tls'] == 1 && !empty($tlsSettings['pinned_peer_cert_sha256'])) {
+                $config['pcs'] = $tlsSettings['pinned_peer_cert_sha256'];
+            }
         }
         
         $network = (string)$server['network'];
-        $networkSettings = $server['networkSettings'] ?? [];
+        $networkSettings = $server['networkSettings'] ?? ($server['network_settings'] ?? []);
     
         switch ($network) {
             case 'tcp':
@@ -242,6 +320,7 @@ class Helper
     public static function buildVlessUri($uuid, $server)
     {
         $name = self::encodeURIComponent($server['name']);
+        $tlsSettings = $server['tls_settings'] ?? [];
 
         $config = [
             "type" => $server['network'],
@@ -253,9 +332,14 @@ class Helper
             "serviceName" => "",
             "security" => $server['tls'] != 0 ? ($server['tls'] == 2 ? "reality" : "tls") : "",
             "flow" => $server['flow'],
-            "fp" => $server['tls_settings']['fingerprint'] ?? 'chrome',
+            "fp" => $tlsSettings['fingerprint'] ?? 'chrome',
+            "insecure" => $tlsSettings['allow_insecure'] ?? 0,
         ];
 
+        if ($server['tls'] == 1 && !empty($tlsSettings['pinned_peer_cert_sha256'])) {
+            $config['pcs'] = $tlsSettings['pinned_peer_cert_sha256'];
+            $config['allowInsecure'] = $config['insecure'];
+        }
         if ($server['tls']) {
             $tlsSettings = $server['tls_settings'] ?? [];
             $config['sni'] = $tlsSettings['server_name'] ?? '';
@@ -264,7 +348,23 @@ class Helper
                 $config['sid'] = $tlsSettings['short_id'] ?? '';
             }
         }
-        
+        if (!empty($tlsSettings['ech'])) {
+            if ($tlsSettings['ech'] === 'cloudflare') {
+                $config['ech'] = 'cloudflare-ech.com+https://doh.pub/dns-query';
+            } elseif ($tlsSettings['ech'] === 'custom' && !empty($tlsSettings['ech_config'])) {
+                $config['ech'] = is_array($tlsSettings['ech_config']) ? $tlsSettings['ech_config'][0] : $tlsSettings['ech_config'];
+            }
+        }
+        if (isset($server['encryption']) && $server['encryption'] == 'mlkem768x25519plus') {
+            $encSettings = $server['encryption_settings'];
+            $enc = 'mlkem768x25519plus.' . ($encSettings['mode'] ?? 'native') . '.' . ($encSettings['rtt'] ?? '1rtt');
+            if (isset($encSettings['client_padding']) && !empty($encSettings['client_padding'])) {
+                $enc .= '.' . $encSettings['client_padding'];
+            }
+            $enc .= '.' . ($encSettings['password'] ?? '');
+            $config['encryption'] = $enc;
+        }
+
         self::configureNetworkSettings($server, $config);
 
         return self::buildUriString('vless', $uuid, $server, $name, $config);
@@ -272,10 +372,14 @@ class Helper
 
     public static function buildTrojanUri($password, $server)
     {
+        $tlsSettings = $server['tls_settings'] ?? [];
+        $allowInsecure = $server['allow_insecure'] ?? $tlsSettings['allow_insecure'] ?? 0;
         $config = [
-            'allowInsecure' => $server['allow_insecure'],
-            'peer' => $server['server_name'],
-            'sni' => $server['server_name'],
+            'allowInsecure' => $allowInsecure,
+            'insecure' => $allowInsecure,
+            'peer' => $server['server_name'] ?? ($tlsSettings['server_name'] ?? ''),
+            'sni' => $server['server_name'] ?? ($tlsSettings['server_name'] ?? ''),
+            'pcs' => $tlsSettings['pinned_peer_cert_sha256'] ?? '',
             'type'=> $server['network'],
         ];
 
@@ -290,6 +394,13 @@ class Helper
                 if(isset($server['network_settings']['headers']['Host'])) {
                     $config['host'] = $server['network_settings']['headers']['Host'];
                 }
+            }
+        }
+        if (!empty($tlsSettings['ech'])) {
+            if ($tlsSettings['ech'] === 'cloudflare') {
+                $config['ech'] = 'cloudflare-ech.com+https://doh.pub/dns-query';
+            } elseif ($tlsSettings['ech'] === 'custom' && !empty($tlsSettings['ech_config'])) {
+                $config['ech'] = is_array($tlsSettings['ech_config']) ? $tlsSettings['ech_config'][0] : $tlsSettings['ech_config'];
             }
         }
         $query = http_build_query($config);
@@ -320,15 +431,47 @@ class Helper
         return "{$uri}#{$name}\r\n";
     }
 
+    public static function buildHysteria2Uri($password, $server)
+    {
+        $remote = self::formatHost($server['host']);
+        $name = self::encodeURIComponent($server['name']);
+
+        $parts = explode(",", $server['port']);
+        $firstPort = strpos($parts[0], '-') !== false ? explode('-', $parts[0])[0] : $parts[0];
+        $tlsSettings = $server['tls_settings'] ?? [];
+        $insecure = $tlsSettings['allow_insecure'] ?? 0;
+        $sni = $tlsSettings['server_name'] ?? '';
+        $uri = "hysteria2://{$password}@{$remote}:{$firstPort}/?insecure={$insecure}&sni={$sni}";
+        $fingerprint = self::getTlsCertificateFingerprint($server);
+        if ($fingerprint !== null) {
+            $uri .= "&pinSHA256={$fingerprint}";
+        }
+        $pcs = $fingerprint ?? ($tlsSettings['pinned_peer_cert_sha256'] ?? '');
+        if (is_string($pcs) && $pcs !== '') {
+            $uri .= '&pcs=' . rawurlencode($pcs);
+        }
+
+        if (isset($server['obfs']) && isset($server['obfs_password'])) {
+            $obfs_password = rawurlencode($server['obfs_password']);
+            $uri .= "&obfs={$server['obfs']}&obfs-password={$obfs_password}";
+        }
+        if (count($parts) !== 1 || strpos($parts[0], '-') !== false) {
+            $uri .= "&mport={$server['mport']}";
+        }
+        return "{$uri}#{$name}\r\n";
+    }
+
     public static function buildTuicUri($password, $server)
     {
+        $tlsSettings = $server['tls_settings'] ?? [];
         $config = [
-            'sni' => $server['server_name'],
+            'sni' => $server['server_name'] ?? ($tlsSettings['server_name'] ?? ''),
             'alpn'=> 'h3',
             'congestion_control' => $server['congestion_control'],
-            'allow_insecure' => $server['insecure'],
+            'allow_insecure' => $server['insecure'] ?? ($tlsSettings['allow_insecure'] ?? 0),
             'disable_sni' => $server['disable_sni'],
             'udp_relay_mode' => $server['udp_relay_mode'],
+            'pcs' => $tlsSettings['pinned_peer_cert_sha256'] ?? '',
         ];
 
         $remote = self::formatHost($server['host']);
@@ -341,19 +484,76 @@ class Helper
 
     public static function buildAnytlsUri($password, $server)
     {
+        $tlsSettings = $server['tls_settings'] ?? [];
         $config = [
-            'insecure' => $server['insecure'],
+            'type' => $server['network'] ?? 'tcp',
+            'insecure' => $server['insecure'] ?? ($tlsSettings['allow_insecure'] ?? 0),
+            'fp' => $tlsSettings['fingerprint'] ?? 'chrome',
         ];
-        if (isset($server['server_name'])) {
-            $config['sni'] = $server['server_name'];
+        if (($server['tls'] ?? 1) == 1 && !empty($tlsSettings['pinned_peer_cert_sha256'])) {
+            $config['pcs'] = $tlsSettings['pinned_peer_cert_sha256'];
         }
-
+        if (isset($server['server_name']) || isset($tlsSettings['server_name'])) {
+            $config['sni'] = $server['server_name'] ?? ($tlsSettings['server_name'] ?? '');
+        }
+        if (isset($server['tls']) && $server['tls'] == 2) {
+            $config['security'] = 'reality';
+            $config['pbk'] = $tlsSettings['public_key'] ?? '';
+            $config['sid'] = $tlsSettings['short_id'] ?? '';
+        }
         $remote = self::formatHost($server['host']);
         $port = $server['port'];
         $name = self::encodeURIComponent($server['name']);
-
+        if (isset($server['network']) && isset($server['network_settings'])) {
+            self::configureNetworkSettings($server, $config);
+        }
         $query = http_build_query($config);
         return "anytls://{$password}@{$remote}:{$port}/?{$query}#{$name}\r\n";
+    }
+
+    /**
+     * Generate ECH (Encrypted Client Hello) key pair for sing-box.
+     * Produces ech_key (MarshalECHKeys format, for server inbound)
+     * and ech_config (ECHConfigList, for client outbound).
+     *
+     * @param string $outerSni The cover/front domain for the outer ClientHello SNI (public_name).
+     *                         This is the FAKE domain visible to network observers.
+     *                         The real server_name is encrypted in the inner ClientHello.
+     */
+    public static function generateEchKeyPair($outerSni)
+    {
+        $privateKey = random_bytes(32);
+        $publicKey = sodium_crypto_scalarmult_base($privateKey);
+
+        $configId = random_int(0, 255);
+
+        // ECHConfig contents per draft-ietf-tls-esni
+        $configData = pack('C', $configId);              // config_id
+        $configData .= pack('n', 0x0020);                // kem_id: DHKEM(X25519, HKDF-SHA256)
+        $configData .= pack('n', 32) . $publicKey;       // public_key with length prefix
+        // cipher suites: {HKDF-SHA256, AES-128-GCM}, {HKDF-SHA256, AES-256-GCM}, {HKDF-SHA256, ChaCha20-Poly1305}
+        $suites = pack('nnnnnn', 0x0001, 0x0001, 0x0001, 0x0002, 0x0001, 0x0003);
+        $configData .= pack('n', strlen($suites)) . $suites;
+        $configData .= pack('C', 0);                     // maximum_name_length
+        $configData .= pack('C', strlen($outerSni)) . $outerSni; // public_name (cover domain, NOT real SNI)
+        $configData .= pack('n', 0);                     // extensions (empty)
+
+        // ECHConfig = version(0xfe0d) + length + data
+        $echConfig = pack('n', 0xfe0d) . pack('n', strlen($configData)) . $configData;
+
+        // ECHConfigList for client (no outer length prefix, per Go crypto/tls)
+        $echConfigList = $echConfig;
+
+        // MarshalECHKeys for server: length-prefixed configs + key entries
+        $echKeys = pack('n', strlen($echConfig)) . $echConfig;
+        $echKeys .= pack('n', 1);                        // num_keys = 1
+        $echKeys .= pack('C', $configId);                // config_id
+        $echKeys .= pack('n', 32) . $privateKey;         // private key with length prefix
+
+        return [
+            'ech_key' => base64_encode($echKeys),
+            'ech_config' => base64_encode($echConfigList),
+        ];
     }
 
     public static function configureNetworkSettings($server, &$config)

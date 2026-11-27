@@ -4,11 +4,11 @@
 
 ## 本分支支持的后端
  - [修改版V2bX](https://github.com/wyx2685/V2bX)
-
+ - [v2node](https://github.com/wyx2685/v2node)
 
 ## 原版迁移步骤
 
-按以下步骤进行面板文件迁移：
+按以下步骤进行面板代码文件迁移：
 
     su root
     cd /www/wwwroot/站点
@@ -17,13 +17,14 @@
     bash update.sh  
 
 
-按以下步骤刷新设置缓存，重启队列:
+按以下步骤配置缓存驱动为redis，然后刷新设置缓存，重启队列:
 
+    sed -i 's/^CACHE_DRIVER=.*/CACHE_DRIVER=redis/' .env
     php artisan config:clear
     php artisan config:cache
     php artisan horizon:terminate
 
-最后进入后台重新保存主题： 主题配置-主题设置-确定
+最后进入后台重新保存主题： 主题配置-选择default主题-主题设置-确定保存
 
 # **V2Board**
 
@@ -32,9 +33,6 @@
 - MySQL5.5+
 - Redis
 - Laravel
-
-## Demo
-[Demo](https://demo.v2board.com)
 
 ## Document
 [Click](https://v2board.com)

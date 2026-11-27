@@ -38,10 +38,9 @@ class OrderService
                 DB::rollBack();
                 abort(500, '充值失败');
             }
-            $order->status = 3;
-            if (!$order->save()) {
+            if (!Order::where('id', $order->id)->where('status', 1)->update(['status' => 3])) {
                 DB::rollBack();
-                abort(500, '充值失败');
+                return;
             }
             DB::commit();
             return;
@@ -92,10 +91,9 @@ class OrderService
             DB::rollBack();
             abort(500, '开通失败');
         }
-        $order->status = 3;
-        if (!$order->save()) {
+        if (!Order::where('id', $order->id)->where('status', 1)->update(['status' => 3])) {
             DB::rollBack();
-            abort(500, '开通失败');
+            return;
         }
 
         DB::commit();
@@ -225,23 +223,28 @@ class OrderService
         if ($lastValidateAt === null) return;
     
         $expiredAtByOrder = strtotime("+{$orderMonthSum} month", $lastValidateAt);
-        if ($expiredAtByOrder < time()) return;
-        $orderSurplusSecond = $expiredAtByOrder - time();
+        $expiredAtByUser = $user->expired_at;
+        if ($expiredAtByOrder < time() || $expiredAtByUser < time()) return;
+        $orderSurplusSecond = $expiredAtByUser - time();
         $orderRangeSecond = $expiredAtByOrder - $lastValidateAt;
     
-        $totalTraffic = $user->transfer_enable / 1073741824;
-        $usedTraffic = ($user->u + $user->d) / 1073741824;
+        $totalTraffic = $user->transfer_enable;
+        $usedTraffic = ($user->u + $user->d);
         if ($totalTraffic == 0) return;
     
         $remainingTrafficRatio = ($totalTraffic - $usedTraffic) / $totalTraffic;
     
         $avgPricePerSecond = $orderAmountSum / $orderRangeSecond;
         if ($orderRangeSecond <= 31 * 86400) {
-            $orderSurplusAmount = $avgPricePerSecond * $orderSurplusSecond * $remainingTrafficRatio;
+            $remainingExpiredTimeRatio = $orderSurplusSecond / $orderRangeSecond;
+            $surplusRatio = min($remainingExpiredTimeRatio, $remainingTrafficRatio);
+            $orderSurplusAmount = $avgPricePerSecond * $orderSurplusSecond * $surplusRatio;
         } else {
-            $firstMonthSeconds = min($orderSurplusSecond, 30 * 86400);
-            $laterMonthsSeconds = $orderSurplusSecond - $firstMonthSeconds;
-            $orderSurplusAmount = $avgPricePerSecond * $firstMonthSeconds * $remainingTrafficRatio +
+            $monthSeconds = 30 * 86400;
+            $firstMonthRemainSeconds = $orderSurplusSecond % $monthSeconds;
+            $surplusRatio = min($firstMonthRemainSeconds / $monthSeconds, $remainingTrafficRatio);
+            $laterMonthsSeconds = $orderSurplusSecond - $firstMonthRemainSeconds;
+            $orderSurplusAmount = $avgPricePerSecond * $monthSeconds * $surplusRatio +
                                   $avgPricePerSecond * $laterMonthsSeconds;
         }
     
@@ -269,8 +272,13 @@ class OrderService
     {
         $order = $this->order;
         DB::beginTransaction();
-        $order->status = 2;
-        if (!$order->save()) {
+        $affected = Order::where('id', $order->id)
+            ->where('status', 0)
+            ->update([
+                'status' => 2
+            ]);
+
+        if ($affected !== 1) {
             DB::rollBack();
             return false;
         }
@@ -374,7 +382,7 @@ class OrderService
 
     private function getbounus($total_amount) {
         $deposit_bounus = config('v2board.deposit_bounus', []);
-        if (empty($deposit_bounus)) {
+        if (empty($deposit_bounus) || $deposit_bounus[0] === null) {
             return 0;
         }
         $add = 0;

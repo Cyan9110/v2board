@@ -28,6 +28,9 @@ class Surge
         $proxyGroup = '';
 
         foreach ($servers as $item) {
+            if (($item['type'] ?? null) === 'v2node' && isset($item['protocol'])) {
+                $item['type'] = $item['protocol'];
+            }
             if ($item['type'] === 'shadowsocks') {
                 // [Proxy]
                 $proxies .= self::buildShadowsocks($user['uuid'], $item);
@@ -43,9 +46,14 @@ class Surge
                 $proxies .= self::buildTrojan($user['uuid'], $item);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
-            }elseif ($item['type'] === 'hysteria' && $item['version'] === 2) { //surge只支持hysteria2
+            }elseif ($item['type'] === 'hysteria2' || ($item['type'] === 'hysteria' && (int)$item['version'] === 2)) {
                 // [Proxy]
                 $proxies .= self::buildHysteria($user['uuid'], $item);
+                // [Proxy Group]
+                $proxyGroup .= $item['name'] . ', ';
+            }elseif ($item['type'] === 'anytls') {
+                // [Proxy]
+                $proxies .= self::buildAnyTLS($user['uuid'], $item);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
@@ -129,18 +137,20 @@ class Surge
 
         if ($server['tls']) {
             array_push($config, 'tls=true');
-            if ($server['tlsSettings']) {
-                $tlsSettings = $server['tlsSettings'];
-                if (isset($tlsSettings['allowInsecure']) && !empty($tlsSettings['allowInsecure']))
-                    array_push($config, 'skip-cert-verify=' . ($tlsSettings['allowInsecure'] ? 'true' : 'false'));
-                if (isset($tlsSettings['serverName']) && !empty($tlsSettings['serverName']))
-                    array_push($config, "sni={$tlsSettings['serverName']}");
+            $tlsSettings = $server['tls_settings'] ?? $server['tlsSettings'] ?? [];
+            if (!empty($tlsSettings['allow_insecure'] ?? $tlsSettings['allowInsecure'] ?? 0)) {
+                $config[] = 'skip-cert-verify=true';
             }
+            $sni = $tlsSettings['server_name'] ?? $tlsSettings['serverName'] ?? '';
+            if ($sni !== '') {
+                $config[] = "sni={$sni}";
+            }
+            Helper::appendTlsCertificateFingerprint($config, $server, 'server-cert-fingerprint-sha256');
         }
         if ($server['network'] === 'ws') {
             array_push($config, 'ws=true');
-            if ($server['networkSettings']) {
-                $wsSettings = $server['networkSettings'];
+            $wsSettings = $server['networkSettings'] ?? $server['network_settings'] ?? [];
+            if ($wsSettings) {
                 if (isset($wsSettings['path']) && !empty($wsSettings['path']))
                     array_push($config, "ws-path={$wsSettings['path']}");
                 if (isset($wsSettings['headers']['Host']) && !empty($wsSettings['headers']['Host']))
@@ -157,18 +167,21 @@ class Surge
 
     public static function buildTrojan($password, $server)
     {
+        $tlsSettings = $server['tls_settings'] ?? [];
+        $sni = $server['server_name'] ?? $tlsSettings['server_name'] ?? '';
         $config = [
             "{$server['name']}=trojan",
             "{$server['host']}",
             "{$server['port']}",
             "password={$password}",
-            $server['server_name'] ? "sni={$server['server_name']}" : "",
+            $sni !== '' ? "sni={$sni}" : "",
             'tfo=true',
             'udp-relay=true'
         ];
-        if (!empty($server['allow_insecure'])) {
-            array_push($config, $server['allow_insecure'] ? 'skip-cert-verify=true' : 'skip-cert-verify=false');
+        if (!empty($server['allow_insecure'] ?? $tlsSettings['allow_insecure'] ?? 0)) {
+            $config[] = 'skip-cert-verify=true';
         }
+        Helper::appendTlsCertificateFingerprint($config, $server, 'server-cert-fingerprint-sha256');
         if (isset($server['network']) && (string)$server['network'] === 'ws') {
             array_push($config, 'ws=true');
             if ($server['network_settings']) {
@@ -188,6 +201,8 @@ class Surge
     //参考文档: https://manual.nssurge.com/policy/proxy.html
     public static function buildHysteria($password, $server)
     {
+        $tlsSettings = $server['tls_settings'] ?? [];
+        $sni = $server['server_name'] ?? $tlsSettings['server_name'] ?? '';
         $parts = explode(",",$server['port']);
         $firstPart = $parts[0];
         if (strpos($firstPart, '-') !== false) {
@@ -202,16 +217,50 @@ class Surge
             "{$server['host']}",
             "{$firstPort}",
             "password={$password}",
-            "download-bandwidth={$server['up_mbps']}",
-            $server['server_name'] ? "sni={$server['server_name']}" : "",
-            // 'tfo=true', 
+            $sni !== '' ? "sni={$sni}" : "",
             'udp-relay=true'
         ];
-        if (!empty($server['insecure'])) {
-            array_push($config, $server['insecure'] ? 'skip-cert-verify=true' : 'skip-cert-verify=false');
+        if (!empty($server['up_mbps'])) {
+            $config[] = "download-bandwidth={$server['up_mbps']}";
         }
+        if (count($parts) > 1 || strpos($firstPart, '-') !== false) {
+            $config[] = 'port-hopping="' . implode(';', $parts) . '"';
+        }
+        if (!empty($server['insecure'] ?? $tlsSettings['allow_insecure'] ?? 0)) {
+            $config[] = 'skip-cert-verify=true';
+        }
+        $obfs = $server['obfs'] ?? '';
+        if (in_array($obfs, ['salamander', 'gecko'], true) && !empty($server['obfs_password'])) {
+            $config[] = "{$obfs}-password={$server['obfs_password']}";
+        }
+        Helper::appendTlsCertificateFingerprint($config, $server, 'server-cert-fingerprint-sha256');
         $config = array_filter($config);
         $uri = implode(',', $config);
+        $uri .= "\r\n";
+        return $uri;
+    }
+
+    public static function buildAnyTLS($password, $server)
+    {
+        $tlsSettings = $server['tls_settings'] ?? [];
+        $allowInsecure = ($server['insecure'] ?? ($tlsSettings['allow_insecure'] ?? 0)) == 1 ? 'true' : 'false';
+        $sni = $server['server_name'] ?? ($tlsSettings['server_name'] ?? '');
+
+        $config = [
+            "{$server['name']}=anytls",
+            "{$server['host']}",
+            "{$server['port']}",
+            "password={$password}",
+            "skip-cert-verify={$allowInsecure}",
+            'tfo=true',
+        ];
+
+        if ($sni) {
+            $config[] = "sni={$sni}";
+        }
+        Helper::appendTlsCertificateFingerprint($config, $server, 'server-cert-fingerprint-sha256');
+
+        $uri = implode(', ', $config);
         $uri .= "\r\n";
         return $uri;
     }

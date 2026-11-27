@@ -43,11 +43,13 @@ class UniProxyController extends Controller
         Cache::put(CacheKey::get('SERVER_' . strtoupper($this->nodeType) . '_LAST_CHECK_AT', $this->nodeInfo->id), time(), 3600);
         $users = $this->serverService->getAvailableUsers($this->nodeInfo->group_id)
             ->map(function ($user) {
-                return array_filter($user->toArray(), fn($v) => !is_null($v));
+                return array_filter($user->toArray(), function ($v) {
+                    return !is_null($v);
+                });
             })->toArray();
 
         $response['users'] = $users;
-        if (strpos($request->header('X-Response-Format'), 'msgpack') !== false ) {
+        if (strpos($request->header('X-Response-Format'), 'msgpack') !== false) {
             $packer = new Packer();
             $response = $packer->pack($response);
             $eTag = sha1($response);
@@ -127,28 +129,58 @@ class UniProxyController extends Controller
         if (empty($data)) {
             $data = $_POST;
         }
-        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
-            // JSON decoding error
+        if (empty($data)) {
             return response([
-                'error' => 'Invalid online data'
+                'data' => true
+            ]);
+        }
+        if (!is_array($data)) {
+            return response([
+                'error' => 'Invalid online data format'
             ], 400);
         }
         $updateAt = time();
+
+        $cacheKeys = [];
+        $keyMap = [];
+        foreach ($data as $uid => $_) {
+            if (!is_numeric($uid)) continue;
+            $key = 'ALIVE_IP_USER_' . $uid;
+            $cacheKeys[] = $key;
+            $keyMap[$uid] = $key;
+        }
+
+        if (empty($cacheKeys)) {
+            return response([
+                'data' => true
+            ]);
+        }
+
+        $cachedData = Cache::many($cacheKeys);
+        $updates = [];
+
         foreach ($data as $uid => $ips) {
-            $ips_array = Cache::get('ALIVE_IP_USER_' . $uid) ?? [];
+            if (!is_numeric($uid) || !is_array($ips)) {
+                continue; // 跳过无效数据
+            }
+            $key = $keyMap[$uid];
+            $ips_array = $cachedData[$key] ?? [];
+
             // 更新节点数据
             $ips_array[$this->nodeType . $this->nodeId] = ['aliveips' => $ips, 'lastupdateAt' => $updateAt];
             // 清理过期数据
             foreach ($ips_array as $nodetypeid => $oldips) {
-                if (!is_int($oldips) && ($updateAt - $oldips['lastupdateAt'] > 100)) {
+                if ($nodetypeid !== 'alive_ip' && is_array($oldips) && ($updateAt - ($oldips['lastupdateAt'] ?? 0) > 100)) {
                     unset($ips_array[$nodetypeid]);
                 }
             }
+
+            // 计算活跃IP数量
             $count = 0;
             if (config('v2board.device_limit_mode', 0) == 1) {
                 $ipmap = [];
                 foreach ($ips_array as $nodetypeid => $newdata) {
-                    if (!is_int($newdata) && isset($newdata['aliveips'])) {
+                    if ($nodetypeid !== 'alive_ip' && is_array($newdata) && isset($newdata['aliveips'])) {
                         foreach ($newdata['aliveips'] as $ip_NodeId) {
                             $ip = explode("_", $ip_NodeId)[0];
                             $ipmap[$ip] = 1;
@@ -158,13 +190,19 @@ class UniProxyController extends Controller
                 $count = count($ipmap);
             } else {
                 foreach ($ips_array as $nodetypeid => $newdata) {
-                    if (!is_int($newdata) && isset($newdata['aliveips'])) {
+                    if ($nodetypeid !== 'alive_ip' && is_array($newdata) && isset($newdata['aliveips'])) {
                         $count += count($newdata['aliveips']);
                     }
                 }
             }
             $ips_array['alive_ip'] = $count;
-            Cache::put('ALIVE_IP_USER_' . $uid, $ips_array, 120);
+
+            $updates[$key] = $ips_array;
+        }
+
+        // 批量更新缓存
+        foreach ($updates as $key => $value) {
+            Cache::put($key, $value, 120);
         }
 
         return response([
@@ -206,7 +244,9 @@ class UniProxyController extends Controller
                     'networkSettings' => $this->nodeInfo->network_settings,
                     'tls' => $this->nodeInfo->tls,
                     'flow' => $this->nodeInfo->flow,
-                    'tls_settings' => $this->nodeInfo->tls_settings
+                    'tls_settings' => $this->nodeInfo->tls_settings,
+                    'encryption' => $this->nodeInfo->encryption,
+                    'encryption_settings' => $this->nodeInfo->encryption_settings
                 ];
                 break;
             case 'trojan':
