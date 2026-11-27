@@ -65,7 +65,7 @@ class Client
             default:
                 break;
         }
-        if (!is_string($token)) {
+        if (!is_string($token) || strlen($token) < 32) {
             abort(403, 'token is error');
         }
         $user = User::where('token', $token)->first();
