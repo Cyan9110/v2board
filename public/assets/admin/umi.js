@@ -6014,7 +6014,9 @@
                     value: 1
                 }, "\u4e00\u6b21\u6027\u6709\u6548"), f.a.createElement("option", {
                     value: 2
-                }, "\u9650\u65f6\u6709\u6548"))), r.show_subscribe_method == 2 ? f.a.createElement(m, {
+                }, "\u9650\u65f6\u6709\u6548"), f.a.createElement("option", {
+                    value: 3
+                }, "手动开启订阅"))), r.show_subscribe_method == 2 ? f.a.createElement(m, {
                     isChildren: !0,
                     title: "\u8ba2\u9605\u94fe\u63a5\u6709\u6548\u65f6\u95f4\u0028\u5206\u949f\u0029",
                     description: "\u8ba2\u9605\u94fe\u63a5\u83b7\u53d6\u540e\u7ecf\u8fc7\u8be5\u65f6\u95f4\u5c06\u5931\u6548\u3002"
@@ -6024,7 +6026,29 @@
                     placeholder: "\u8bf7\u8f93\u5165",
                     defaultValue: r.show_subscribe_expire,
                     onChange: e=>this.set("safe", "show_subscribe_expire", e.target.value)
-                })) : "")), f.a.createElement(s["a"].TabPane, {
+                })) : "", r.show_subscribe_method == 3 ? f.a.createElement(f.a.Fragment, null,
+                f.a.createElement(m, {
+                    isChildren: !0,
+                    title: "开启后有效时长（分钟）",
+                    description: "默认 10 分钟。改动只影响之后开启的窗口。"
+                }, f.a.createElement("input", {
+                    type: "number",
+                    min: 1,
+                    max: 1440,
+                    className: "form-control",
+                    value: r.subscribe_manual_minutes == null ? 10 : r.subscribe_manual_minutes,
+                    onChange: e=>this.set("subscribe", "subscribe_manual_minutes", e.target.value)
+                })), f.a.createElement(m, {
+                    isChildren: !0,
+                    title: "免开启的 User-Agent 正则",
+                    description: "每行一条不带分隔符的正则，任一条匹配即可免开启，不区分大小写。留空则关闭豁免。"
+                }, f.a.createElement("textarea", {
+                    rows: 4,
+                    maxLength: 2048,
+                    className: "form-control",
+                    value: r.subscribe_manual_user_agent || "",
+                    onChange: e=>this.set("subscribe", "subscribe_manual_user_agent", e.target.value)
+                }))) : "")), f.a.createElement(s["a"].TabPane, {
                     tab: "\u5145\u503c",
                     key: "deposit"
                 }, f.a.createElement("div", {

@@ -11,6 +11,7 @@ use App\Protocols\General;
 use App\Protocols\Singbox\Singbox;
 use App\Protocols\Singbox\SingboxOld;
 use App\Services\ServerService;
+use App\Services\SubscribeAccessService;
 use App\Services\UserService;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
@@ -25,7 +26,13 @@ class ClientController extends Controller
         $user = $request->user;
         // account not expired and is not banned.
         $userService = new UserService();
-        if ($userService->isAvailable($user)) {
+        $available = $userService->isAvailable($user);
+        $manualAccess = SubscribeAccessService::required();
+        if ($manualAccess
+            && (!$available || !(new SubscribeAccessService())->allows($user, $request->userAgent()))) {
+            abort(403, __('Please enable subscription access in the user center.'));
+        }
+        if ($available) {
             $serverService = new ServerService();
             $servers = $serverService->getAvailableServers($user);
             $protocol = null;
@@ -89,7 +96,10 @@ class ClientController extends Controller
             }
 
             $protocol = $protocol ?? General::class;
-            return (new $protocol($user, $servers))->handle();
+            $subscription = (new $protocol($user, $servers))->handle();
+            return $manualAccess
+                ? response($subscription)->header('Cache-Control', 'private, no-store')
+                : $subscription;
         }
     }
 

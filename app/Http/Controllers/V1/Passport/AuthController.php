@@ -16,6 +16,7 @@ use App\Utils\Dict;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 // use ReCaptcha\ReCaptcha;
 
 class AuthController extends Controller
@@ -140,9 +141,17 @@ class AuthController extends Controller
     {
         $email = $request->input('email');
         $password = $request->input('password');
+        $user = User::where('email', $email)->first();
+        $isAdmin = $user && (int)$user->is_admin === 1;
+        $passwordLimitEnabled = (int)config('v2board.password_limit_enable', 1);
+        $passwordErrorKey = CacheKey::get('PASSWORD_ERROR_LIMIT', $isAdmin ? $user->email : $email);
 
-        if ((int)config('v2board.password_limit_enable', 1)) {
-            $passwordErrorCount = (int)Cache::get(CacheKey::get('PASSWORD_ERROR_LIMIT', $email), 0);
+        if (!$isAdmin && Helper::requiresLoginTurnstile($request->userAgent())) {
+            $this->verifyLoginTurnstile($request);
+        }
+
+        if ($passwordLimitEnabled) {
+            $passwordErrorCount = (int)Cache::get($passwordErrorKey, 0);
             if ($passwordErrorCount >= (int)config('v2board.password_limit_count', 5)) {
                 abort(500, __('There are too many password errors, please try again after :minute minutes.', [
                     'minute' => config('v2board.password_limit_expire', 60)
@@ -150,7 +159,6 @@ class AuthController extends Controller
             }
         }
 
-        $user = User::where('email', $email)->first();
         if (!$user) {
             abort(500, __('Incorrect email or password'));
         }
@@ -160,12 +168,15 @@ class AuthController extends Controller
             $password,
             $user->password)
         ) {
-            if ((int)config('v2board.password_limit_enable')) {
+            if ($passwordLimitEnabled) {
                 Cache::put(
-                    CacheKey::get('PASSWORD_ERROR_LIMIT', $email),
+                    $passwordErrorKey,
                     (int)$passwordErrorCount + 1,
                     60 * (int)config('v2board.password_limit_expire', 60)
                 );
+            }
+            if ($isAdmin && Helper::requiresLoginTurnstile($request->userAgent())) {
+                $this->verifyLoginTurnstile($request);
             }
             abort(500, __('Incorrect email or password'));
         }
@@ -178,6 +189,38 @@ class AuthController extends Controller
         return response([
             'data' => $authService->generateAuthData($request)
         ]);
+    }
+
+    private function verifyLoginTurnstile(AuthLogin $request): void
+    {
+        $token = $request->input('recaptcha_data');
+        if (!is_string($token) || $token === '' || strlen($token) > 2048) {
+            abort(422, __('Please complete the Turnstile verification.'));
+        }
+
+        $secret = (string)config('v2board.recaptcha_key', '');
+        if ($secret === '') {
+            abort(503, __('Turnstile verification is unavailable.'));
+        }
+
+        try {
+            $response = Http::asForm()->withOptions(['connect_timeout' => 3])->timeout(5)
+                ->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+                    'secret' => $secret,
+                    'response' => $token,
+                    'remoteip' => $request->ip(),
+                ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            abort(503, __('Turnstile verification is unavailable.'));
+        }
+
+        if (!$response->successful()) {
+            abort(503, __('Turnstile verification is unavailable.'));
+        }
+        $action = $response->json('action');
+        if ($response->json('success') !== true || !in_array($action, [null, '', 'login'], true)) {
+            abort(422, __('Turnstile verification failed. Please try again.'));
+        }
     }
 
     public function token2Login(Request $request)

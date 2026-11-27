@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use App\Services\SubscribeAccessService;
 
 class ConfigSave extends FormRequest
 {
@@ -51,8 +52,10 @@ class ConfigSave extends FormRequest
         'renew_order_event_id' => 'in:0,1',
         'change_order_event_id' => 'in:0,1',
         'show_info_to_server_enable' => 'in:0,1',
-        'show_subscribe_method' => 'in:0,1,2',
+        'show_subscribe_method' => 'in:0,1,2,3',
         'show_subscribe_expire' => 'nullable|integer',
+        'subscribe_manual_minutes' => 'integer|min:1|max:1440',
+        'subscribe_manual_user_agent' => ['bail', 'nullable', 'string', 'max:2048'],
         // server
         'server_api_url' => 'nullable|string',
         'server_token' => 'nullable|min:16',
@@ -113,6 +116,15 @@ class ConfigSave extends FormRequest
     public function rules()
     {
         $rules = self::RULES;
+        $rules['subscribe_manual_user_agent'][] = function ($attribute, $value, $fail) {
+            foreach (SubscribeAccessService::userAgentExpressions($value) as $index => $expression) {
+                $pattern = SubscribeAccessService::userAgentPattern($expression);
+                if ($pattern === null || @preg_match($pattern, '') === false) {
+                    $fail(sprintf('第 %d 行的 User-Agent 正则无效，请填写不带分隔符的正则正文。', $index + 1));
+                    return;
+                }
+            }
+        };
 
         $rules['deposit_bounus'][] = function ($attribute, $value, $fail) {
             foreach ($value as $tier) {

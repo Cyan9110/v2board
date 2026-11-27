@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ConfigSave;
 use App\Jobs\SendEmailJob;
 use App\Services\TelegramService;
+use App\Services\SubscribeAccessService;
 use App\Utils\Dict;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -116,6 +117,8 @@ class ConfigController extends Controller
                 'show_info_to_server_enable' => (int)config('v2board.show_info_to_server_enable', 0),
                 'show_subscribe_method' => (int)config('v2board.show_subscribe_method', 0),
                 'show_subscribe_expire' => (int)config('v2board.show_subscribe_expire', 5),
+                'subscribe_manual_minutes' => (int)config('v2board.subscribe_manual_minutes', SubscribeAccessService::DEFAULT_MINUTES),
+                'subscribe_manual_user_agent' => config('v2board.subscribe_manual_user_agent', SubscribeAccessService::DEFAULT_USER_AGENT),
             ],
             'frontend' => [
                 'frontend_theme' => config('v2board.frontend_theme', 'v2board'),

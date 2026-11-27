@@ -14,6 +14,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Services\AuthService;
 use App\Services\OrderService;
+use App\Services\SubscribeAccessService;
 use App\Services\UserService;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
@@ -323,8 +324,20 @@ class UserController extends Controller
 
     public function getSubscribe(Request $request)
     {
-        $user = User::where('id', $request->user['id'])
+        $user = $this->findSubscriptionUser($request->user['id']);
+        if (!$user) {
+            abort(500, __('The user does not exist'));
+        }
+
+        return $this->subscriptionResponse($user);
+    }
+
+    private function findSubscriptionUser(int $userId): ?User
+    {
+        return User::whereKey($userId)
             ->select([
+                'id',
+                'banned',
                 'plan_id',
                 'token',
                 'expired_at',
@@ -336,9 +349,10 @@ class UserController extends Controller
                 'uuid'
             ])
             ->first();
-        if (!$user) {
-            abort(500, __('The user does not exist'));
-        }
+    }
+
+    private function subscriptionResponse(User $user, ?array $access = null)
+    {
         if ($user->plan_id) {
             $user['plan'] = Plan::find($user->plan_id);
             if (!$user['plan']) {
@@ -348,20 +362,42 @@ class UserController extends Controller
 
         //统计在线设备
         $countalive = 0;
-        $ips_array = Cache::get('ALIVE_IP_USER_' . $request->user['id']);
+        $ips_array = Cache::get('ALIVE_IP_USER_' . $user->id);
         if ($ips_array) {
             $countalive = $ips_array['alive_ip'];
         }
         $user['alive_ip'] = $countalive;
 
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        $user['subscribe_access'] = $access ?? (new SubscribeAccessService())->status($user);
 
         $userService = new UserService();
         $user['reset_day'] = $userService->getResetDay($user);
         $user['allow_new_period'] = config('v2board.allow_new_period', 0);
         return response([
-            'data' => $user
-        ]);
+            'data' => $user->makeHidden(['id', 'banned'])
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    public function enableSubscribe(Request $request)
+    {
+        if (!SubscribeAccessService::required()) {
+            abort(409, __('Manual subscription access is disabled.'));
+        }
+
+        $user = $this->findSubscriptionUser($request->user['id']);
+        if (!$user || !(new UserService())->isAvailable($user)) {
+            abort(403, __('No active subscription.'));
+        }
+
+        try {
+            $access = (new SubscribeAccessService())->enable($user);
+        } catch (\Exception $e) {
+            report($e);
+            abort(503, __('Unable to enable subscription access. Please try again later.'));
+        }
+
+        return $this->subscriptionResponse($user, $access);
     }
 
     public function unbindTelegram(Request $request)

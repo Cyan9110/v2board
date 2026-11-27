@@ -4,11 +4,13 @@ namespace App\Http\Controllers\V1\Guest;
 
 use App\Http\Controllers\Controller;
 use App\Utils\Dict;
+use App\Utils\Helper;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 class CommController extends Controller
 {
-    public function config()
+    public function config(Request $request)
     {
         return response([
             'data' => [
@@ -19,12 +21,13 @@ class CommController extends Controller
                     ? $this->getEmailSuffix()
                     : 0,
                 'is_recaptcha' => (int)config('v2board.recaptcha_enable', 0) ? 1 : 0,
+                'login_turnstile_required' => Helper::requiresLoginTurnstile($request->userAgent()),
                 'recaptcha_site_key' => config('v2board.recaptcha_site_key'),
                 'app_description' => config('v2board.app_description'),
                 'app_url' => config('v2board.app_url'),
                 'logo' => config('v2board.logo'),
             ]
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     private function getEmailSuffix()

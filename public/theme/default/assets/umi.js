@@ -30824,10 +30824,20 @@
                     stat: [],
                     loading: !0,
                     visible: !1,
-                    notices: []
+                    notices: [],
+                    subscribeClock: Date.now(),
+                    subscribeEnabling: false
                 }
             }
             componentDidMount() {
+                this.subscribeTimer = setInterval(() => {
+                    const subscription = this.props.user.subscribe;
+                    const access = subscription.subscribe_access;
+                    if (access && access.manual_required && access.active &&
+                        this.state.subscribeClock < subscription.subscribeAccessDeadline) {
+                        this.setState({ subscribeClock: Date.now() });
+                    }
+                }, 1000);
                 this.props.dispatch({
                     type: "user/getSubscribe"
                 }),
@@ -30848,6 +30858,21 @@
                 this.props.dispatch({
                     type: "comm/config"
                 })
+            }
+            componentWillUnmount() {
+                clearInterval(this.subscribeTimer);
+                this.subscribeTimer = null;
+            }
+            async enableSubscription() {
+                if (this.state.subscribeEnabling) return;
+                this.setState({ subscribeEnabling: true });
+                try {
+                    await this.props.dispatch({ type: "user/enableSubscribe" });
+                } finally {
+                    if (this.subscribeTimer !== null) {
+                        this.setState({ subscribeEnabling: false, subscribeClock: Date.now() });
+                    }
+                }
             }
             modalVisible(e) {
                 this.setState({
@@ -30939,6 +30964,11 @@
             }
             render() {
                 var e, t, n, r, s = this.props.user, u = s.stat, d = s.subscribe, m = this.props.notice.notices, y = Math.round(Object(p["f"])(d.u + d.d, d.transfer_enable) * 100) / 100, x = [];
+                const access = d.subscribe_access;
+                const manualAccess = !!(access && access.manual_required);
+                const remaining = manualAccess && access.active
+                    ? Math.max(0, Math.ceil((d.subscribeAccessDeadline - Date.now()) / 1000)) : 0;
+                const countdown = Math.floor(remaining / 60) + ":" + ("0" + remaining % 60).slice(-2);
                 (void 0 !== u[0] && u[0] && x.push(l.a.createElement("div", {
                     className: "alert alert-danger",
                     role: "alert"
@@ -31134,13 +31164,33 @@
                         float: "right"
                     },
                     className: "nav-main-link-icon si si-book-open"
-                })), l.a.createElement(g["a"], {
+                })), manualAccess && remaining === 0 ? l.a.createElement("div", {
+                    className: "v2board-shortcuts-item",
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-disabled": this.state.subscribeEnabling,
+                    onClick: () => this.enableSubscription(),
+                    onKeyDown: event => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            this.enableSubscription();
+                        }
+                    }
+                }, l.a.createElement("div", null, this.state.subscribeEnabling ? "正在开启…" : "开启订阅"),
+                l.a.createElement("div", {
+                    className: "description"
+                }, "开启后可复制订阅链接或导入客户端"), l.a.createElement("i", {
+                    style: {
+                        float: "right"
+                    },
+                    className: "nav-main-link-icon si si-feed"
+                })) : l.a.createElement(g["a"], {
                     subscribeUrl: d.subscribe_url
                 }, l.a.createElement("div", {
                     className: "v2board-shortcuts-item"
                 }, l.a.createElement("div", null, Object(b["formatMessage"])({
                     id: "\u4e00\u952e\u8ba2\u9605"
-                })), l.a.createElement("div", {
+                }), manualAccess ? " · 剩余 " + countdown : null), l.a.createElement("div", {
                     className: "description"
                 }, Object(b["formatMessage"])({
                     id: "\u5feb\u901f\u5c06\u8282\u70b9\u5bfc\u5165\u5bf9\u5e94\u5ba2\u6237\u7aef\u8fdb\u884c\u4f7f\u7528"
@@ -35372,17 +35422,20 @@
           , u = n.n(c)
           , l = n("Y2fQ")
           , f = n("TEnU")
-          , p = n("tI4l");
+          , p = n("tI4l")
+          , loginRequest = n("t3Un");
         class d extends a.a.Component {
             constructor(e) {
                 super(e),
-                this.state = {},
+                this.state = { loginConfig: null, turnstileToken: "", verificationError: "" },
                 this.keyDown = this.keyDown.bind(this)
             }
             keyDown(e) {
                 13 === e.keyCode && this.login()
             }
             componentDidMount() {
+                this.loginMounted = true;
+                this.loadLoginConfig();
                 var e = this.props.location.query.verify
                   , t = this.props.location.query.redirect;
                 e && this.props.dispatch({
@@ -35397,16 +35450,92 @@
                 window.addEventListener("keydown", this.keyDown, !1)
             }
             componentWillUnmount() {
+                this.loginMounted = false;
+                if (window.turnstile && this.turnstileWidget != null) {
+                    window.turnstile.remove(this.turnstileWidget);
+                }
                 window.removeEventListener("keydown", this.keyDown, !1)
             }
-            login() {
+            async loadLoginConfig() {
+                this.setState({ verificationError: "" });
+                try {
+                    const result = await Object(loginRequest["a"])("/guest/comm/config");
+                    if (!this.loginMounted) return;
+                    if (!result || result.code !== 200 || !result.data) throw new Error();
+                    this.setState({ loginConfig: result.data }, () => {
+                        if (this.requiresLoginTurnstile()) this.loadTurnstile(result.data.recaptcha_site_key);
+                    });
+                } catch (error) {
+                    if (this.loginMounted) this.setState({ verificationError: "登录配置加载失败，请重试。" });
+                }
+            }
+            requiresLoginTurnstile() {
+                const config = this.state.loginConfig;
+                return config && Number(config.login_turnstile_required == null
+                    ? config.is_recaptcha : config.login_turnstile_required);
+            }
+            loadTurnstile(sitekey) {
+                const showError = () => {
+                    if (this.loginMounted) this.setState({ turnstileToken: "", verificationError: "安全验证加载失败，请重试。" });
+                };
+                const renderWidget = () => {
+                    if (!this.loginMounted || this.turnstileWidget != null) return;
+                    try {
+                        this.turnstileWidget = window.turnstile.render(this.refs.turnstile, {
+                            sitekey,
+                            action: "login",
+                            callback: token => this.loginMounted && this.setState({ turnstileToken: token, verificationError: "" }),
+                            "expired-callback": () => this.loginMounted && this.setState({ turnstileToken: "" }),
+                            "error-callback": showError
+                        });
+                    } catch (error) {
+                        showError();
+                    }
+                };
+                if (!sitekey) {
+                    showError();
+                } else if (window.turnstile) {
+                    renderWidget();
+                } else {
+                    const script = document.createElement("script");
+                    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+                    script.async = true;
+                    script.onload = renderWidget;
+                    script.onerror = () => {
+                        script.remove();
+                        showError();
+                    };
+                    document.head.appendChild(script);
+                }
+            }
+            retryVerification() {
+                if (this.turnstileWidget != null && window.turnstile) {
+                    window.turnstile.remove(this.turnstileWidget);
+                    this.turnstileWidget = null;
+                }
+                this.setState({ turnstileToken: "" });
+                this.loadLoginConfig();
+            }
+            async login() {
+                const config = this.state.loginConfig;
+                if (!config || this.loginSubmitting || (this.requiresLoginTurnstile() && !this.state.turnstileToken)) return;
                 var e = this.props.location.query.redirect;
-                this.props.dispatch({
-                    type: "passport/login",
-                    email: this.refs.email.value,
-                    password: this.refs.password.value,
-                    redirect: e
-                })
+                this.loginSubmitting = true;
+                try {
+                    await this.props.dispatch({
+                        type: "passport/login",
+                        email: this.refs.email.value,
+                        password: this.refs.password.value,
+                        recaptchaData: this.state.turnstileToken || undefined,
+                        redirect: e
+                    });
+                } finally {
+                    this.loginSubmitting = false;
+                    if (this.loginMounted && this.turnstileWidget != null) {
+                        this.setState({ turnstileToken: "" });
+                        window.turnstile.reset(this.turnstileWidget);
+                    }
+                }
             }
             render() {
                 var e = this.props.passport.loginLoading;
@@ -35470,10 +35599,21 @@
                         id: "\u5bc6\u7801"
                     }),
                     ref: "password"
-                })), a.a.createElement("div", {
+                })), this.requiresLoginTurnstile() ? a.a.createElement("div", {
+                    className: "form-group",
+                    ref: "turnstile"
+                }) : null, this.state.verificationError ? a.a.createElement("div", {
+                    className: "form-group",
+                    role: "alert"
+                }, this.state.verificationError, " ", a.a.createElement("button", {
+                    type: "button",
+                    className: "btn btn-link p-0",
+                    onClick: () => this.retryVerification()
+                }, "重试")) : null, a.a.createElement("div", {
                     className: "form-group mb-0"
                 }, a.a.createElement("button", {
-                    disabled: e,
+                    disabled: e || !this.state.loginConfig ||
+                        (this.requiresLoginTurnstile() && !this.state.turnstileToken),
                     type: "submit",
                     className: "btn btn-block btn-primary font-w400",
                     onClick: ()=>this.login()
@@ -44606,10 +44746,12 @@
             },
             e
         }
+        let subscriptionRequestId = 0;
         t["default"] = {
             name: "user",
             state: {
                 subscribe: {},
+                subscriptionRequestId: 0,
                 stat: [],
                 userInfo: {},
                 getUserInfoLoading: !1,
@@ -44623,42 +44765,45 @@
                 setState(e, t) {
                     var n = t.payload;
                     return i()({}, e, n)
+                },
+                setSubscribe(state, {payload}) {
+                    if (payload.requestId < state.subscriptionRequestId) return state;
+                    const access = payload.data.subscribe_access;
+                    return Object.assign({}, state, {
+                        subscriptionRequestId: payload.requestId,
+                        subscribe: Object.assign({}, payload.data, {
+                            subscribeAccessDeadline: Date.now() + (access ? access.remaining_seconds * 1000 : 0)
+                        })
+                    });
                 }
             },
             effects: {
-                getSubscribe(e, t) {
-                    return p().mark(function e() {
-                        var n, r, o;
-                        return p().wrap(function(e) {
-                            while (1)
-                                switch (e.prev = e.next) {
-                                case 0:
-                                    return n = t.put,
-                                    e.next = 3,
-                                    Object(a["a"])("/user/getSubscribe");
-                                case 3:
-                                    if (r = e.sent,
-                                    200 === r.code) {
-                                        e.next = 6;
-                                        break
-                                    }
-                                    return e.abrupt("return");
-                                case 6:
-                                    return e.next = 8,
-                                    n({
-                                        type: "setState",
-                                        payload: {
-                                            subscribe: r.data
-                                        }
-                                    });
-                                case 8:
-                                    window.$crisp && window.$crisp.push(["set", "session:data", [[["Plan", (null === (o = r.data.plan) || void 0 === o ? void 0 : o.name) || "-"], ["ExpireTime", f()(1e3 * r.data.expired_at).format("YYYY-MM-DD")], ["UsedTraffic", Object(u["b"])(r.data.u + r.data.d)], ["AllTraffic", Object(u["b"])(r.data.transfer_enable)]]]]);
-                                case 9:
-                                case "end":
-                                    return e.stop()
-                                }
-                        }, e)
-                    })()
+                *enableSubscribe(action, {put}) {
+                    const result = yield Object(a["b"])("/user/enableSubscribe", {});
+                    if (result && result.code === 409) {
+                        yield put({ type: "getSubscribe" });
+                    }
+                    if (result && result.code === 200) {
+                        yield put({
+                            type: "setSubscribe",
+                            payload: {data: result.data, requestId: ++subscriptionRequestId}
+                        });
+                    }
+                },
+                *getSubscribe(action, {put}) {
+                    const requestId = ++subscriptionRequestId;
+                    const result = yield Object(a["a"])("/user/getSubscribe");
+                    if (!result || result.code !== 200) return;
+                    const data = result.data;
+                    yield put({ type: "setSubscribe", payload: {data, requestId} });
+                    if (window.$crisp) {
+                        window.$crisp.push(["set", "session:data", [[
+                            ["Plan", (data.plan && data.plan.name) || "-"],
+                            ["ExpireTime", f()(1000 * data.expired_at).format("YYYY-MM-DD")],
+                            ["UsedTraffic", Object(u["b"])(data.u + data.d)],
+                            ["AllTraffic", Object(u["b"])(data.transfer_enable)]
+                        ]]]);
+                    }
                 },
                 getStat(e, t) {
                     return p().mark(function e() {
@@ -57491,7 +57636,8 @@
                                     return n.next = 6,
                                     Object(i["b"])("/passport/auth/login", {
                                         email: r,
-                                        password: o
+                                        password: o,
+                                        recaptcha_data: e.recaptchaData
                                     });
                                 case 6:
                                     return f = n.sent,

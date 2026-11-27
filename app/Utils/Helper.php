@@ -2,10 +2,17 @@
 
 namespace App\Utils;
 use App\Models\User;
+use App\Services\SubscribeAccessService;
 use Illuminate\Support\Facades\Cache;
 
 class Helper
 {
+    public static function requiresLoginTurnstile(?string $userAgent): bool
+    {
+        return (bool)config('v2board.recaptcha_enable', 0)
+            && preg_match('/VcNet\/v\d+(\.\d+){2}(?![\d.])/', $userAgent ?? '') !== 1;
+    }
+
     public static function uuidToBase64($uuid, $length)
     {
         return base64_encode(substr($uuid, 0, $length));
@@ -104,10 +111,13 @@ class Helper
         if (empty($path)) {
             $path = '/api/v1/client/subscribe';
         } 
-        $subscribeUrls = explode(',', config('v2board.subscribe_url'));
-        $subscribeUrl = $subscribeUrls[rand(0, count($subscribeUrls) - 1)];
+        $subscribeUrls = explode(',', (string)config('v2board.subscribe_url'));
+        $subscribeUrl = $submethod === SubscribeAccessService::MODE
+            ? trim($subscribeUrls[0])
+            : $subscribeUrls[rand(0, count($subscribeUrls) - 1)];
         switch ($submethod) {
             case 0:
+            case SubscribeAccessService::MODE:
                 $path = "{$path}?vc={$token}";
                 if ($subscribeUrl) return $subscribeUrl . $path;
                 return url($path);
