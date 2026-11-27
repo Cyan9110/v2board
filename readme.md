@@ -12,7 +12,7 @@
 
     su root
     cd /www/wwwroot/站点
-    git remote set-url origin https://github.com/wyx2685/v2board  
+    git remote set-url origin https://github.com/Cyan9110/v2board  
     git checkout master  
     bash update.sh  
 
