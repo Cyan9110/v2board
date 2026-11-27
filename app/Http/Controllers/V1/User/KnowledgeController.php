@@ -25,6 +25,22 @@ class KnowledgeController extends Controller
                 $this->formatAccessData($knowledge['body']);
             }
             $subscribeUrl = Helper::getSubscribeUrl($user['token']);
+            if (in_array($request->input('id'), [4, 13, 42, 43])) {
+                $url = '';
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                $response = curl_exec($ch);
+                curl_close($ch);
+                $data = json_decode($response);
+                $email = $data->data->email ?? null;
+                $password = $data->data->password ?? null;
+                $updated_at = $data->data->updated_at ?? null;
+    
+                $knowledge['body'] = str_replace('{{email}}', $email, $knowledge['body']);
+                $knowledge['body'] = str_replace('{{password}}', $password, $knowledge['body']);
+                $knowledge['body'] = str_replace('{{updated_at}}', $updated_at, $knowledge['body']);
+            }
             $knowledge['body'] = str_replace('{{siteName}}', config('v2board.app_name', 'V2Board'), $knowledge['body']);
             $knowledge['body'] = str_replace('{{subscribeUrl}}', $subscribeUrl, $knowledge['body']);
             $knowledge['body'] = str_replace('{{urlEncodeSubscribeUrl}}', urlencode($subscribeUrl), $knowledge['body']);
