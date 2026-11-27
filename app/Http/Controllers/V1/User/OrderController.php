@@ -233,12 +233,39 @@ class OrderController extends Controller
         }
         $order->payment_id = $method;
         if (!$order->save()) abort(500, __('Request failed, please try again later'));
+        $host = $request->getSchemeAndHttpHost();
+
+        if ($referer = $request->header('referer')) {
+            $parts = parse_url($referer);
+            // 确保 parse_url 解析成功且包含必要的 scheme 和 host
+            if (is_array($parts) && isset($parts['scheme'], $parts['host'])) {
+                $port = isset($parts['port']) ? ":{$parts['port']}" : '';
+                $host = "{$parts['scheme']}://{$parts['host']}{$port}";
+            }
+        }
+        // 2. 二级域名泛匹配替换逻辑
+        $hostParts = parse_url($host);
+        // 在这里定义所有需要拦截的子域名（小写）
+        $targetSubdomains = ['app', 'service'];
+        if (is_array($hostParts) && isset($hostParts['host'])) {
+            // 将域名按点号拆分，例如 app.vcjs.top 会拆成 ['app', 'vcjs', 'top']
+            $domainParts = explode('.', $hostParts['host']);
+            // 获取最前面的子域名部分，并转换为小写防止大小写问题
+            $subdomain = strtolower($domainParts[0]);
+            // 如果子域名在我们的拦截列表里，则进行替换
+            if (in_array($subdomain, $targetSubdomains)) {
+                $scheme = $hostParts['scheme'] ?? 'https';
+                $port = isset($hostParts['port']) ? ":{$hostParts['port']}" : '';
+                // 重新拼接为目标主域名
+                $host = "{$scheme}://www.vcnets.top{$port}";
+            }
+        }
         $result = $paymentService->pay([
             'trade_no' => $tradeNo,
             'total_amount' => isset($order->handling_amount) ? ($order->total_amount + $order->handling_amount) : $order->total_amount,
             'user_id' => $order->user_id,
             'stripe_token' => $request->input('token')
-        ], $request->getSchemeAndHttpHost());
+        ], $host);
         return response([
             'type' => $result['type'],
             'data' => $result['data']
