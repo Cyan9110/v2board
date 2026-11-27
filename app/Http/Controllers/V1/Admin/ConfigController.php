@@ -166,6 +166,7 @@ class ConfigController extends Controller
                 'email_whitelist_suffix' => config('v2board.email_whitelist_suffix', Dict::EMAIL_WHITELIST_SUFFIX_DEFAULT),
                 'email_gmail_limit_enable' => config('v2board.email_gmail_limit_enable', 0),
                 'recaptcha_enable' => (int)config('v2board.recaptcha_enable', 0),
+                'login_turnstile_exempt_user_agent' => config('v2board.login_turnstile_exempt_user_agent', ''),
                 'recaptcha_key' => config('v2board.recaptcha_key'),
                 'recaptcha_site_key' => config('v2board.recaptcha_site_key'),
                 'register_limit_by_ip_enable' => (int)config('v2board.register_limit_by_ip_enable', 0),

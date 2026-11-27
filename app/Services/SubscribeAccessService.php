@@ -54,17 +54,24 @@ class SubscribeAccessService
             return true;
         }
 
-        if ($userAgent !== null && $userAgent !== '' && strlen($userAgent) <= 2048) {
-            $expressions = (string)config('v2board.subscribe_manual_user_agent', self::DEFAULT_USER_AGENT);
-            foreach (self::userAgentExpressions($expressions) as $expression) {
-                $pattern = self::userAgentPattern($expression);
-                if ($pattern !== null && @preg_match($pattern, $userAgent) === 1) {
-                    return true;
-                }
+        $expressions = (string)config('v2board.subscribe_manual_user_agent', self::DEFAULT_USER_AGENT);
+        return self::matchesUserAgent($userAgent, $expressions) || $this->status($user)['active'];
+    }
+
+    public static function matchesUserAgent(?string $userAgent, string $expressions): bool
+    {
+        if ($userAgent === null || $userAgent === '' || strlen($userAgent) > 2048) {
+            return false;
+        }
+
+        foreach (self::userAgentExpressions($expressions) as $expression) {
+            $pattern = self::userAgentPattern($expression);
+            if ($pattern !== null && @preg_match($pattern, $userAgent) === 1) {
+                return true;
             }
         }
 
-        return $this->status($user)['active'];
+        return false;
     }
 
     public static function userAgentExpressions(string $value): array

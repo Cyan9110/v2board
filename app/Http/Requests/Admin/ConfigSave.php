@@ -96,6 +96,7 @@ class ConfigSave extends FormRequest
         'email_whitelist_suffix' => 'nullable|array',
         'email_gmail_limit_enable' => 'in:0,1',
         'recaptcha_enable' => 'in:0,1',
+        'login_turnstile_exempt_user_agent' => ['bail', 'nullable', 'string', 'max:2048'],
         'recaptcha_key' => '',
         'recaptcha_site_key' => '',
         'email_verify' => 'in:0,1',
@@ -116,7 +117,7 @@ class ConfigSave extends FormRequest
     public function rules()
     {
         $rules = self::RULES;
-        $rules['subscribe_manual_user_agent'][] = function ($attribute, $value, $fail) {
+        $validateUserAgent = function ($attribute, $value, $fail) {
             foreach (SubscribeAccessService::userAgentExpressions($value) as $index => $expression) {
                 $pattern = SubscribeAccessService::userAgentPattern($expression);
                 if ($pattern === null || @preg_match($pattern, '') === false) {
@@ -125,6 +126,8 @@ class ConfigSave extends FormRequest
                 }
             }
         };
+        $rules['subscribe_manual_user_agent'][] = $validateUserAgent;
+        $rules['login_turnstile_exempt_user_agent'][] = $validateUserAgent;
 
         $rules['deposit_bounus'][] = function ($attribute, $value, $fail) {
             foreach ($value as $tier) {

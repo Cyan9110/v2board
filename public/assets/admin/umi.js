@@ -5841,14 +5841,14 @@
                     onChange: e=>this.set("safe", "email_whitelist_suffix", e.target.value.split(","))
                 })) : "", f.a.createElement(m, {
                     title: "\u9632\u673a\u5668\u4eba",
-                    description: "\u5f00\u542f\u540e\u5c06\u4f1a\u4f7f\u7528Google reCAPTCHA\u9632\u6b62\u673a\u5668\u4eba\u3002"
+                    description: "开启后，密码登录会使用 Cloudflare Turnstile 验证。"
                 }, f.a.createElement(l["a"], {
                     checked: parseInt(_.recaptcha_enable),
                     onChange: e=>this.set("safe", "recaptcha_enable", e ? 1 : 0)
                 })), _.recaptcha_enable ? f.a.createElement(f.a.Fragment, null, f.a.createElement(m, {
                     isChildren: !0,
                     title: "\u5bc6\u94a5",
-                    description: "\u5728Google reCAPTCHA\u7533\u8bf7\u7684\u5bc6\u94a5\u3002"
+                    description: "Cloudflare Turnstile 的 Secret Key。"
                 }, f.a.createElement("input", {
                     type: "text",
                     className: "form-control",
@@ -5858,13 +5858,23 @@
                 })), f.a.createElement(m, {
                     isChildren: !0,
                     title: "\u7f51\u7ad9\u5bc6\u94a5",
-                    description: "\u5728Google reCAPTCH\u7533\u8bf7\u7684\u7f51\u7ad9\u5bc6\u94a5\u3002"
+                    description: "Cloudflare Turnstile 的 Site Key。"
                 }, f.a.createElement("input", {
                     type: "text",
                     className: "form-control",
                     placeholder: "\u8bf7\u8f93\u5165",
                     defaultValue: _.recaptcha_site_key,
                     onChange: e=>this.set("safe", "recaptcha_site_key", e.target.value)
+                })), f.a.createElement(m, {
+                    isChildren: !0,
+                    title: "登录免 Turnstile 的 User-Agent 正则",
+                    description: "每行一条正则，任一条匹配即可免验证，不区分大小写。留空关闭 User-Agent 豁免。"
+                }, f.a.createElement("textarea", {
+                    rows: 4,
+                    maxLength: 2048,
+                    className: "form-control",
+                    value: _.login_turnstile_exempt_user_agent || "",
+                    onChange: e=>this.set("safe", "login_turnstile_exempt_user_agent", e.target.value)
                 }))) : "", f.a.createElement(m, {
                     title: "IP\u6ce8\u518c\u9650\u5236",
                     description: "\u5f00\u542f\u540e\u5982\u679cIP\u6ce8\u518c\u8d26\u6237\u8fbe\u5230\u89c4\u5219\u8981\u6c42\u5c06\u4f1a\u88ab\u9650\u5236\u6ce8\u518c\uff0c\u8bf7\u6ce8\u610fIP\u5224\u65ad\u53ef\u80fd\u56e0\u4e3aCDN\u6216\u524d\u7f6e\u4ee3\u7406\u5bfc\u81f4\u95ee\u9898\u3002"

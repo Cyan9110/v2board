@@ -10,7 +10,10 @@ class Helper
     public static function requiresLoginTurnstile(?string $userAgent): bool
     {
         return (bool)config('v2board.recaptcha_enable', 0)
-            && preg_match('/VcNet\/v\d+(\.\d+){2}(?![\d.])/', $userAgent ?? '') !== 1;
+            && !SubscribeAccessService::matchesUserAgent(
+                $userAgent,
+                (string)config('v2board.login_turnstile_exempt_user_agent', '')
+            );
     }
 
     public static function uuidToBase64($uuid, $length)
