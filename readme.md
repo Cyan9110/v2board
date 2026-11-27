@@ -6,16 +6,20 @@
  - [修改版V2bX](https://github.com/wyx2685/V2bX)
  - [v2node](https://github.com/wyx2685/v2node)
 
-## 原版迁移步骤
+## 从原版迁移到 Cyan 分支
 
-按以下步骤进行面板代码文件迁移：
+迁移前请备份数据库和 `.env`，并处理工作区中尚未提交的源码改动。
 
     su root
     cd /www/wwwroot/站点
-    git remote set-url origin https://github.com/Cyan9110/v2board  
-    git checkout master  
-    bash update.sh  
+    git remote set-url origin https://github.com/Cyan9110/v2board.git
+    git fetch origin Cyan
+    git checkout Cyan
+    git pull --ff-only origin Cyan
+    composer update
+    php artisan v2board:update
 
+当前的 `update.sh` 固定同步 `origin/master`，迁移到 `Cyan` 时请使用上述命令。
 
 按以下步骤配置缓存驱动为redis，然后刷新设置缓存，重启队列:
 
