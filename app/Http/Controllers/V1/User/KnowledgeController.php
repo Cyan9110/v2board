@@ -28,6 +28,7 @@ class KnowledgeController extends Controller
             $knowledge['body'] = str_replace('{{siteName}}', config('v2board.app_name', 'V2Board'), $knowledge['body']);
             $knowledge['body'] = str_replace('{{subscribeUrl}}', $subscribeUrl, $knowledge['body']);
             $knowledge['body'] = str_replace('{{urlEncodeSubscribeUrl}}', urlencode($subscribeUrl), $knowledge['body']);
+            $knowledge['body'] = str_replace('{{password}}', urlencode($subscribeUrl), $knowledge['body']);
             $knowledge['body'] = str_replace(
                 '{{safeBase64SubscribeUrl}}',
                 str_replace(
